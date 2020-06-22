@@ -329,8 +329,13 @@ app.get('/accountverify/:token/:email', async(req, res) => {
             })
         } else {
             let bucketName = process.env.bucket + email.split("@")[0];
+            // let bucketName = "xyzabcdefgh";
             var params = {
-                Bucket: bucketName
+                Bucket: bucketName,
+                ACL: "public-read",
+                CreateBucketConfiguration: {
+                    LocationConstraint: "ap-south-1"
+                }
             };
             s3Client.createBucket(params, async function(err, data) {
                 if (err) console.log(err, err.stack); // an error occurred
@@ -340,6 +345,7 @@ app.get('/accountverify/:token/:email', async(req, res) => {
                     res.status(200).json({
                         message: "The verification of the account is successfull"
                     })
+
                     let thisConfig = {
                         AllowedHeaders: ["*"],
                         AllowedMethods: ["POST", "GET", "PUT", "DELETE", "HEAD"],
@@ -355,28 +361,29 @@ app.get('/accountverify/:token/:email', async(req, res) => {
                         } else {
                             // update the displayed CORS config for the selected bucket
                             console.log("Success", data);
+                            let param = {
+                                Bucket: bucketName,
+                                Policy: "{\"Version\": \"2008-10-17\", \"Statement\": [{ \"Sid\": \"AllowPublicRead\",\"Effect\": \"Allow\",\"Principal\": {\"AWS\": \"*\"}, \"Action\": [ \"s3:GetObject\"], \"Resource\": [\"arn:aws:s3:::" + bucketName + "/*\" ] } ]}"
+                                    // Policy: `{
+                                    //     "Version": "2008-10-17",
+                                    //     "Statement": [
+                                    //         {
+                                    //             "Sid": "AllowPublicRead",
+                                    //             "Effect": "Allow",
+                                    //             "Principal": {
+                                    //                 "AWS": "*"
+                                    //             },
+                                    //             "Action": "s3:GetObject",
+                                    //             "Resource": "arn:aws:s3:::sample-bucket007/*",
+                                    //         }
+                                    //     ]
+                                    // }`
+                            };
+                            s3Client.putBucketPolicy(param, function(err, data) {
+                                if (err) console.log(err, err.stack); // an error occurred
+                                else console.log(data); // successful response
+                            });
                         }
-                    });
-                    let param = {
-                        Bucket: bucketName,
-                        Policy: `{
-                            "Version": "2008-10-17",
-                            "Statement": [
-                                {
-                                    "Sid": "AllowPublicRead",
-                                    "Effect": "Allow",
-                                    "Principal": {
-                                        "AWS": "*"
-                                    },
-                                    "Action": "s3:GetObject",
-                                    "Resource": "arn:aws:s3:::sample-bucket007/*"
-                                }
-                            ]
-                        }`
-                    };
-                    s3Client.putBucketPolicy(param, function(err, data) {
-                        if (err) console.log(err, err.stack); // an error occurred
-                        else console.log(data); // successful response
                     });
                 }
             });
@@ -400,7 +407,8 @@ app.post('/getuserdata', [authenticate], async(req, res) => {
             firstName: data.firstName,
             lastName: data.lastName,
             isVerified: data.isVerified,
-            bucketName: data.bucketName
+            bucketName: data.bucketName,
+            totalsize: data.totalsize
         })
     } else {
         res.status(400).json({
