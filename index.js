@@ -357,8 +357,8 @@ app.post('/getuserdata', [authenticate], async(req, res) => {
 })
 app.get('/listobjects', (req, res) => {
     let s3Client = new AWS.S3({
-        accessKeyId: 'AKIAIWYFVP64GYYJB7OQ',
-        secretAccessKey: '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',
+        accessKeyId: process.env.KEY,
+        secretAccessKey: process.env.SECRET,
         // region: 'Mumbai',
         apiVersion: '2006-03-01'
             // bucketName = 'node-sdk-sample-'
