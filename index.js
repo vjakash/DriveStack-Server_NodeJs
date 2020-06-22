@@ -47,7 +47,13 @@ let mailOptions = {
     subject: 'Sending Email using Node.js',
     html: `<h1>Hi from node</h1><p> Messsage</p>`
 };
-
+let s3Client = new AWS.S3({
+    accessKeyId: process.env.KEY,
+    secretAccessKey: process.env.SECRET,
+    // region: 'Mumbai',
+    apiVersion: '2006-03-01'
+        // bucketName = 'node-sdk-sample-'
+})
 async function authenticate(req, res, next) {
     if (req.headers.authorization == undefined) {
         res.status(401).json({
@@ -112,7 +118,7 @@ app.post('/register', async(req, res) => {
             let data2 = await db.collection("users").update({ email: req.body.email }, { $set: { verificationToken: token, verificationExpiry: expiry, verificationTimestamp: timestamp } });
             mailOptions.to = req.body.email;
             mailOptions.subject = 'Cloud Stack-Account verification '
-            mailOptions.html = `<html><body><h1>Reset Password link</h1>
+            mailOptions.html = `<html><body><h1>Account Verification Link</h1>
                                  <h3>Click the link below to verify the account</h3>
                                 <a href='${process.env.urldev}/#/verifyaccount/${token}/${req.body.email}'>${process.env.urldev}/#/verifyaccount/${token}/${req.body.email}</a><br>
                                 <p>The link expires in <strong>${expiryInHour/24} Days</strong></p></body></html>`
@@ -322,10 +328,58 @@ app.get('/accountverify/:token/:email', async(req, res) => {
                 message: "The verification link has expired register again"
             })
         } else {
-            let data1 = await db.collection("users").update({ email: email, verificationToken: token }, { $set: { isVerified: true, verificationToken: '', verificationExpiry: '', verificationTimestamp: '' } }).catch((err) => { throw err; });
-            res.status(200).json({
-                message: "The verification of the account is successfull"
-            })
+            let bucketName = process.env.bucket + email.split("@")[0];
+            var params = {
+                Bucket: bucketName
+            };
+            s3Client.createBucket(params, async function(err, data) {
+                if (err) console.log(err, err.stack); // an error occurred
+                else {
+                    console.log(data); // successful response      
+                    let data1 = await db.collection("users").updateOne({ email: email, verificationToken: token }, { $set: { isVerified: true, verificationToken: '', verificationExpiry: '', verificationTimestamp: '', bucketName: bucketName, tier: 'free', totalsize: '0.5' } }).catch((err) => { throw err; });
+                    res.status(200).json({
+                        message: "The verification of the account is successfull"
+                    })
+                    let thisConfig = {
+                        AllowedHeaders: ["*"],
+                        AllowedMethods: ["POST", "GET", "PUT", "DELETE", "HEAD"],
+                        AllowedOrigins: ["*"],
+                        ExposeHeaders: ["ETag"]
+                    };
+                    let corsRules = new Array(thisConfig);
+                    var corsParams = { Bucket: bucketName, CORSConfiguration: { CORSRules: corsRules } };
+                    s3Client.putBucketCors(corsParams, async function(err, data) {
+                        if (err) {
+                            // display error message
+                            console.log("Error", err);
+                        } else {
+                            // update the displayed CORS config for the selected bucket
+                            console.log("Success", data);
+                        }
+                    });
+                    let param = {
+                        Bucket: bucketName,
+                        Policy: `{
+                            "Version": "2008-10-17",
+                            "Statement": [
+                                {
+                                    "Sid": "AllowPublicRead",
+                                    "Effect": "Allow",
+                                    "Principal": {
+                                        "AWS": "*"
+                                    },
+                                    "Action": "s3:GetObject",
+                                    "Resource": "arn:aws:s3:::sample-bucket007/*"
+                                }
+                            ]
+                        }`
+                    };
+                    s3Client.putBucketPolicy(param, function(err, data) {
+                        if (err) console.log(err, err.stack); // an error occurred
+                        else console.log(data); // successful response
+                    });
+                }
+            });
         }
     } else {
         res.status(200).json({
@@ -346,7 +400,7 @@ app.post('/getuserdata', [authenticate], async(req, res) => {
             firstName: data.firstName,
             lastName: data.lastName,
             isVerified: data.isVerified,
-            urls: data.urls
+            bucketName: data.bucketName
         })
     } else {
         res.status(400).json({
@@ -355,21 +409,32 @@ app.post('/getuserdata', [authenticate], async(req, res) => {
     }
 
 })
-app.get('/listobjects', (req, res) => {
-    let s3Client = new AWS.S3({
-        accessKeyId: process.env.KEY,
-        secretAccessKey: process.env.SECRET,
-        // region: 'Mumbai',
-        apiVersion: '2006-03-01'
-            // bucketName = 'node-sdk-sample-'
+app.post('/listobjects', [authenticate], async(req, res) => {
+    if (req.body.email != '') {
+        let email = req.body.email;
+        let client = await mongodb.connect(dbURL).catch((err) => { throw err; });
+        let db = client.db("drive");
+        let data = await db.collection("users").findOne({ email: email }).catch((err) => { throw err; });
+        // console.log(email, data);
+        client.close();
+        var params = {
+            Bucket: data.bucketName
+                // MaxKeys: 2
+        };
+        s3Client.listObjects(params, function(err, data) {
+            if (err) console.log(err, err.stack); // an error occurred
+            else console.log(data);
+            res.status(200).json(data);
+        });
+    } else {
+        res.status(400).json({
+            messagge: "The email address is missing"
+        })
+    }
+})
+app.get("/getkeyandsec", [authenticate], (req, res) => {
+    res.status(200).json({
+        key: process.env.KEY,
+        secret: process.env.SECRET
     })
-    var params = {
-        Bucket: "sample-bucket007"
-            // MaxKeys: 2
-    };
-    s3Client.listObjects(params, function(err, data) {
-        if (err) console.log(err, err.stack); // an error occurred
-        else console.log(data);
-        res.json(data);
-    });
 })
