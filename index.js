@@ -446,3 +446,23 @@ app.get("/getkeyandsec", [authenticate], (req, res) => {
         secret: process.env.SECRET
     })
 })
+app.post('/delete', [authenticate], (req, res) => {
+    let bucketName = req.body.bucketName;
+    let key = req.body.key;
+    var params = {
+        Bucket: bucketName,
+        Key: key
+            /* 
+               where value for 'Key' equals 'pathName1/pathName2/.../pathNameN/fileName.ext'
+               - full path name to your file without '/' at the beginning
+            */
+    };
+
+    s3Client.deleteObject(params, function(err, data) {
+        if (err) console.log(err, err.stack); // an error occurred
+        else console.log(data); // successful response
+    });
+    res.status(200).json({
+        message: `Deleted ${key}`
+    })
+})
