@@ -1,7 +1,13 @@
 const AWS = require('aws-sdk');
 const bcrypt = require('bcrypt');
-var atob = require('atob');
-
+const atob = require('atob');
+const Razorpay = require('razorpay');
+const instance = new Razorpay({
+    // key_id: process.env.RAZORPAY_KEY,
+    key_id: "rzp_test_VOOCC5sS9NmTSF",
+    key_secret: "V3iI59d2EyyBpKAxThdGHLTT"
+        // key_secret: process.env.RAZORPAY_SECRET
+})
 const dotenv = require('dotenv');
 dotenv.config();
 
@@ -332,7 +338,7 @@ app.get('/accountverify/:token/:email', async(req, res) => {
             // let bucketName = "xyzabcdefgh";
             var params = {
                 Bucket: bucketName,
-                ACL: "public-read",
+                ACL: "private",
                 CreateBucketConfiguration: {
                     LocationConstraint: "ap-south-1"
                 }
@@ -361,28 +367,16 @@ app.get('/accountverify/:token/:email', async(req, res) => {
                         } else {
                             // update the displayed CORS config for the selected bucket
                             console.log("Success", data);
-                            let param = {
-                                Bucket: bucketName,
-                                Policy: "{\"Version\": \"2008-10-17\", \"Statement\": [{ \"Sid\": \"AllowPublicRead\",\"Effect\": \"Allow\",\"Principal\": {\"AWS\": \"*\"}, \"Action\": [ \"s3:GetObject\"], \"Resource\": [\"arn:aws:s3:::" + bucketName + "/*\" ] } ]}"
-                                    // Policy: `{
-                                    //     "Version": "2008-10-17",
-                                    //     "Statement": [
-                                    //         {
-                                    //             "Sid": "AllowPublicRead",
-                                    //             "Effect": "Allow",
-                                    //             "Principal": {
-                                    //                 "AWS": "*"
-                                    //             },
-                                    //             "Action": "s3:GetObject",
-                                    //             "Resource": "arn:aws:s3:::sample-bucket007/*",
-                                    //         }
-                                    //     ]
-                                    // }`
-                            };
-                            s3Client.putBucketPolicy(param, function(err, data) {
-                                if (err) console.log(err, err.stack); // an error occurred
-                                else console.log(data); // successful response
-                            });
+                            //updating the bucket policy
+                            // let param = {
+                            //     Bucket: bucketName,
+                            //     Policy: "{\"Version\": \"2008-10-17\", \"Statement\": [{ \"Sid\": \"AllowPublicRead\",\"Effect\": \"Allow\",\"Principal\": {\"AWS\": \"*\"}, \"Action\": [ \"s3:GetObject\"], \"Resource\": [\"arn:aws:s3:::" + bucketName + "/*\" ] } ]}"
+
+                            // };
+                            // s3Client.putBucketPolicy(param, function(err, data) {
+                            //     if (err) console.log(err, err.stack); // an error occurred
+                            //     else console.log(data); // successful response
+                            // });
                         }
                     });
                 }
@@ -482,4 +476,27 @@ app.post('/upgrade', [authenticate], async(req, res) => {
             message: `No user found with Email Id- ${req.body.email}`
         })
     }
+})
+app.post('/createOrder', [authenticate], async(req, res) => {
+    let options = {
+        amount: req.body.amount, // amount in the smallest currency unit
+        currency: "INR",
+        receipt: "order_rcptid_11",
+        payment_capture: '1'
+    };
+    instance.orders.create(options, async function(err, order) {
+        console.log(order);
+        let client = await mongodb.connect(dbURL).catch((err) => { throw err; })
+        let db = client.db("drive");
+        let data = await db.collection("users").updateOne({ email: req.body.email }, { $set: { order: order } }).catch((err) => { throw err; })
+        client.close();
+        if (data) {
+            res.status(200).json(order);
+        } else {
+            res.status(400).json({
+                message: `No user found with Email Id- ${req.body.email}`
+            })
+        }
+        res.json(order);
+    });
 })
