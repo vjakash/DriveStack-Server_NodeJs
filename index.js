@@ -408,7 +408,8 @@ app.post('/getuserdata', [authenticate], async(req, res) => {
             lastName: data.lastName,
             isVerified: data.isVerified,
             bucketName: data.bucketName,
-            totalsize: data.totalsize
+            totalsize: data.totalsize,
+            tier: data.tier
         })
     } else {
         res.status(400).json({
@@ -465,4 +466,20 @@ app.post('/delete', [authenticate], (req, res) => {
     res.status(200).json({
         message: `Deleted ${key}`
     })
+})
+app.post('/upgrade', [authenticate], async(req, res) => {
+    let email = req.body.email;
+    let client = await mongodb.connect(dbURL).catch((err) => { throw err; })
+    let db = client.db("drive");
+    let data = await db.collection("users").updateOne({ email: req.body.email }, { $set: { totalsize: "2", tier: "plus" } }).catch((err) => { throw err; })
+    client.close();
+    if (data) {
+        res.status(200).json({
+            meassage: "Upgraded the storage"
+        });
+    } else {
+        res.status(400).json({
+            message: `No user found with Email Id- ${req.body.email}`
+        })
+    }
 })
